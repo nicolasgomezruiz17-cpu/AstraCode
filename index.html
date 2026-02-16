@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Study Assistant</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Marked.js para renderizar Markdown a HTML -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <!-- PDF.js para leer archivos PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+        // Configuración del worker de PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+
+    <style>
+        /* Estilos personalizados para el contenido Markdown generado */
+        .markdown-body h1 { font-size: 1.5em; font-weight: bold; margin-top: 1em; margin-bottom: 0.5em; color: #0c4a6e; }
+        .markdown-body h2 { font-size: 1.25em; font-weight: bold; margin-top: 1em; margin-bottom: 0.5em; color: #0284c7; }
+        .markdown-body ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 1em; }
+        .markdown-body ol { list-style-type: decimal; padding-left: 1.5em; margin-bottom: 1em; }
+        .markdown-body p { margin-bottom: 1em; line-height: 1.6; }
+        .markdown-body strong { font-weight: 700; color: #334155; }
+        .markdown-body code { background-color: #f1f5f9; padding: 0.2em 0.4em; border-radius: 4px; font-family: monospace; font-size: 0.9em; }
+        .markdown-body pre { background-color: #1e293b; color: #f8fafc; padding: 1em; border-radius: 8px; overflow-x: auto; margin-bottom: 1em; }
+        .markdown-body blockquote { border-left: 4px solid #0ea5e9; padding-left: 1em; color: #64748b; font-style: italic; }
+        
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen flex flex-col">
+
+    <!-- Navbar -->
+    <nav class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <i class="fa-solid fa-brain text-brand-600 text-2xl mr-3"></i>
+                    <span class="font-bold text-xl text-gray-900">StudyAI Assistant</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button onclick="toggleSettings()" class="text-gray-500 hover:text-brand-600 transition">
+                        <i class="fa-solid fa-gear text-lg"></i>
+                    </button>
+                    <a href="https://github.com" target="_blank" class="text-gray-500 hover:text-black transition">
+                        <i class="fa-brands fa-github text-lg"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Modal de Configuración (API Key) -->
+    <div id="settingsModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 transform transition-all scale-100">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-gray-900">Configuración</h3>
+                <button onclick="toggleSettings()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
+            <p class="text-sm text-gray-600 mb-4">
+                Para usar esta aplicación, necesitas una API Key de OpenAI. Tu clave se guarda en tu navegador y nunca se envía a nuestro servidor.
+            </p>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">OpenAI API Key</label>
+                <input type="password" id="apiKeyInput" placeholder="sk-..." class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition">
+            </div>
+            <button onclick="saveApiKey()" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-2 px-4 rounded-lg transition shadow-md">
+                Guardar y Cerrar
+            </button>
+            <p class="text-xs text-center text-gray-400 mt-3">
+                <a href="https://platform.openai.com/api-keys" target="_blank" class="underline hover:text-brand-600">Consigue tu API Key aquí</a>
+            </p>
+        </div>
+    </div>
+
+    <!-- Contenido Principal -->
+    <main class="flex-grow max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        <!-- Panel Izquierdo: Entradas -->
+        <div class="lg:col-span-4 space-y-6">
+            
+            <!-- Tarjeta de Material -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                    <i class="fa-solid fa-folder-open mr-2 text-brand-500"></i> Material de Estudio
+                </h2>
+                
+                <!-- Input de Tema -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Tema o Pregunta</label>
+                    <textarea id="topicInput" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none resize-none" placeholder="Ej: Historia de Roma, Ecuaciones diferenciales, o pega un texto aquí..."></textarea>
+                </div>
+
+                <!-- Separador -->
+                <div class="relative flex py-2 items-center">
+                    <div class="flex-grow border-t border-gray-300"></div>
+                    <span class="flex-shrink-0 mx-4 text-gray-400 text-xs uppercase">O sube un archivo</span>
+                    <div class="flex-grow border-t border-gray-300"></div>
+                </div>
+
+                <!-- Upload PDF -->
+                <div class="mt-2">
+                    <label class="flex justify-center w-full h-32 px-4 transition bg-white border-2 border-gray-300 border-dashed rounded-lg appearance-none cursor-pointer hover:border-brand-500 focus:outline-none" id="dropzone">
+                        <span class="flex items-center space-x-2">
+                            <i class="fa-solid fa-cloud-arrow-up text-gray-400 text-2xl"></i>
+                            <span class="font-medium text-gray-600" id="fileNameDisplay">Arrastra un PDF o clic aquí</span>
+                        </span>
+                        <input type="file" name="file_upload" id="pdfInput" accept="application/pdf" class="hidden">
+                    </label>
+                    <p class="text-xs text-gray-500 mt-2 text-center" id="pdfStatus"></p>
+                </div>
+            </div>
+
+            <!-- Tarjeta de Acciones -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center">
+                    <i class="fa-solid fa-wand-magic-sparkles mr-2 text-purple-500"></i> Generar
+                </h2>
+                <div class="space-y-3">
+                    <button onclick="generateContent('plan')" class="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-lg hover:bg-brand-50 hover:border-brand-300 hover:text-brand-700 transition group">
+                        <span class="font-medium">Plan de Estudio</span>
+                        <i class="fa-solid fa-calendar-days text-gray-400 group-hover:text-brand-500"></i>
+                    </button>
+                    <button onclick="generateContent('quiz')" class="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-lg hover:bg-brand-50 hover:border-brand-300 hover:text-brand-700 transition group">
+                        <span class="font-medium">Crear Examen (Quiz)</span>
+                        <i class="fa-solid fa-clipboard-question text-gray-400 group-hover:text-brand-500"></i>
+                    </button>
+                    <button onclick="generateContent('explain')" class="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-lg hover:bg-brand-50 hover:border-brand-300 hover:text-brand-700 transition group">
+                        <span class="font-medium">Explicar como Tutor</span>
+                        <i class="fa-solid fa-chalkboard-user text-gray-400 group-hover:text-brand-500"></i>
+                    </button>
+                    <button onclick="generateContent('summary')" class="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-lg hover:bg-brand-50 hover:border-brand-300 hover:text-brand-700 transition group">
+                        <span class="font-medium">Resumir Puntos Clave</span>
+                        <i class="fa-solid fa-list-check text-gray-400 group-hover:text-brand-500"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel Derecho: Resultados -->
+        <div class="lg:col-span-8">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 min-h-[600px] flex flex-col relative overflow-hidden">
+                <!-- Header Resultados -->
+                <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                    <h3 class="font-bold text-gray-700">Resultado</h3>
+                    <div class="flex space-x-2">
+                        <button onclick="copyToClipboard()" class="text-xs bg-white border border-gray-300 px-3 py-1 rounded hover:bg-gray-100 transition">
+                            <i class="fa-solid fa-copy mr-1"></i> Copiar
+                        </button>
+                        <button onclick="clearOutput()" class="text-xs bg-white border border-gray-300 px-3 py-1 rounded hover:text-red-600 hover:border-red-300 transition">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Área de Contenido -->
+                <div id="outputArea" class="p-8 markdown-body overflow-y-auto flex-grow">
+                    <div class="flex flex-col items-center justify-center h-full text-gray-400">
+                        <i class="fa-solid fa-robot text-6xl mb-4 text-gray-200"></i>
+                        <p class="text-lg">Selecciona un material y una acción para comenzar.</p>
+                        <p class="text-sm mt-2">La IA analizará tu PDF o tema y generará el contenido aquí.</p>
+                    </div>
+                </div>
+
+                <!-- Overlay de Carga -->
+                <div id="loadingOverlay" class="absolute inset-0 bg-white bg-opacity-90 flex flex-col items-center justify-center z-10 hidden">
+                    <div class="loader mb-4"></div>
+                    <p class="text-brand-600 font-medium animate-pulse">La IA está pensando...</p>
+                    <p class="text-xs text-gray-500 mt-2">Analizando documentos y generando respuesta</p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 py-6 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 text-center">
+            <p class="text-gray-500 text-sm">
+                Desarrollado con HTML, Tailwind & OpenAI API. 
+                <span class="text-gray-400 mx-2">|</span> 
+                Datos procesados localmente.
+            </p>
+        </div>
+    </footer>
+
+    <!-- JavaScript Lógica -->
+    <script>
+        // --- Variables Globales ---
+        let extractedPdfText = "";
+        let apiKey = localStorage.getItem('openai_api_key') || "";
+
+        // --- Inicialización ---
+        window.addEventListener('DOMContentLoaded', () => {
+            if (!apiKey) {
+                toggleSettings();
+            } else {
+                document.getElementById('apiKeyInput').value = apiKey;
+            }
+        });
+
+        // --- Gestión de Configuración ---
+        function toggleSettings() {
+            const modal = document.getElementById('settingsModal');
+            modal.classList.toggle('hidden');
+        }
+
+        function saveApiKey() {
+            const input = document.getElementById('apiKeyInput').value.trim();
+            if (input.startsWith('sk-')) {
+                apiKey = input;
+                localStorage.setItem('openai_api_key', apiKey);
+                toggleSettings();
+                showNotification("API Key guardada correctamente", "success");
+            } else {
+                showNotification("Por favor ingresa una API Key válida (empieza con sk-)", "error");
+            }
+        }
+
+        // --- Gestión de PDF ---
+        document.getElementById('pdfInput').addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (file.type !== 'application/pdf') {
+                showNotification("Por favor sube un archivo PDF válido.", "error");
+                return;
+            }
+
+            document.getElementById('fileNameDisplay').innerText = file.name;
+            document.getElementById('pdfStatus').innerText = "Extrayendo texto... ⏳";
+            
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                
+                let fullText = "";
+                // Limitar a las primeras 15 páginas para no saturar tokens (o ajustar según necesidad)
+                const maxPages = Math.min(pdf.numPages, 15); 
+                
+                for (let i = 1; i <= maxPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join(' ');
+                    fullText += `--- Página ${i} ---\n${pageText}\n`;
+                }
+
+                extractedPdfText = fullText;
+                document.getElementById('pdfStatus').innerText = `Texto extraído (${maxPages} pgs). Listo para procesar. ✅`;
+                showNotification("PDF procesado correctamente", "success");
+
+            } catch (error) {
+                console.error(error);
+                document.getElementById('pdfStatus').innerText = "Error al leer el PDF.";
+                showNotification("Error al leer el PDF", "error");
+            }
+        });
+
+        // --- Lógica Principal (OpenAI) ---
+        async function generateContent(mode) {
+            if (!apiKey) {
+                toggleSettings();
+                showNotification("Configura tu API Key primero", "error");
+                return;
+            }
+
+            const topic = document.getElementById('topicInput').value.trim();
+            
+            if (!topic && !extractedPdfText) {
+                showNotification("Ingresa un tema o sube un PDF.", "error");
+                return;
+            }
+
+            showLoading(true);
+
+            // Construir el Prompt según el modo
+            let systemPrompt = "Eres un tutor experto y amable llamado AstraStudy.";
+            let userPrompt = "";
+            
+            // Contexto base
+            let context = "";
+            if (topic) context += `\nTema/Pregunta del usuario: ${topic}`;
+            if (extractedPdfText) context += `\nContenido del Documento de referencia (usa esto como fuente principal):\n${extractedPdfText.substring(0, 15000)}... [texto truncado]`;
+
+            switch (mode) {
+                case 'plan':
+                    systemPrompt += " Genera un plan de estudio estructurado. Usa tablas Markdown para cronogramas. Divide por módulos, tiempo estimado y objetivos.";
+                    userPrompt = `Crea un plan de estudio detallado basado en este contexto: ${context}`;
+                    break;
+                case 'quiz':
+                    systemPrompt += " Genera un examen de práctica. Incluye 5 preguntas de opción múltiple y 2 preguntas de desarrollo. Al final, incluye las respuestas correctas en una sección desplegable o separada.";
+                    userPrompt = `Genera un quiz basado en: ${context}`;
+                    break;
+                case 'explain':
+                    systemPrompt += " Explica los conceptos clave de forma didáctica, usando analogías y ejemplos claros. Usa negritas para términos importantes.";
+                    userPrompt = `Explícame el contenido o responde la duda basada en: ${context}`;
+                    break;
+                case 'summary':
+                    systemPrompt += " Crea un resumen ejecutivo con 'bullet points'. Identifica las ideas principales, fechas o fórmulas clave.";
+                    userPrompt = `Resume lo siguiente: ${context}`;
+                    break;
+            }
+
+            try {
+                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: "gpt-4o-mini", // O gpt-3.5-turbo si prefieres ahorrar
+                        messages: [
+                            { role: "system", content: systemPrompt },
+                            { role: "user", content: userPrompt }
+                        ],
+                        temperature: 0.7
+                    })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error?.message || "Error en la API");
+                }
+
+                const data = await response.json();
+                const aiText = data.choices[0].message.content;
+                
+                renderMarkdown(aiText);
+
+            } catch (error) {
+                renderError(error.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // --- Utilidades de UI ---
+        function showLoading(show) {
+            const overlay = document.getElementById('loadingOverlay');
+            if (show) overlay.classList.remove('hidden');
+            else overlay.classList.add('hidden');
+        }
+
+        function renderMarkdown(text) {
+            const outputArea = document.getElementById('outputArea');
+            outputArea.innerHTML = marked.parse(text);
+        }
+
+        function renderError(msg) {
+            const outputArea = document.getElementById('outputArea');
+            outputArea.innerHTML = `
+                <div class="bg-red-50 border-l-4 border-red-500 p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i class="fa-solid fa-triangle-exclamation text-red-500"></i>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-red-700">
+                                Error: ${msg}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function clearOutput() {
+            document.getElementById('outputArea').innerHTML = `
+                <div class="flex flex-col items-center justify-center h-full text-gray-400">
+                    <i class="fa-solid fa-robot text-6xl mb-4 text-gray-200"></i>
+                    <p class="text-lg">Selecciona un material y una acción para comenzar.</p>
+                </div>
+            `;
+        }
+
+        function copyToClipboard() {
+            const content = document.getElementById('outputArea').innerText;
+            navigator.clipboard.writeText(content).then(() => {
+                showNotification("Contenido copiado", "success");
+            });
+        }
+
+        function showNotification(message, type) {
+            // Simple notificación tipo Toast
+            const div = document.createElement('div');
+            div.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white transform transition-all duration-300 translate-y-10 opacity-0 z-50 ${type === 'error' ? 'bg-red-500' : 'bg-green-500'}`;
+            div.innerHTML = `<i class="fa-solid ${type === 'error' ? 'fa-circle-xmark' : 'fa-circle-check'} mr-2"></i> ${message}`;
+            document.body.appendChild(div);
+
+            // Animar entrada
+            requestAnimationFrame(() => {
+                div.classList.remove('translate-y-10', 'opacity-0');
+            });
+
+            // Eliminar después de 3s
+            setTimeout(() => {
+                div.classList.add('translate-y-10', 'opacity-0');
+                setTimeout(() => div.remove(), 300);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
